@@ -1,0 +1,328 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Score Predictor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Layout: one centred column (max 640px). Sticky header with tabs, filter chips, then match cards built around a split home/draw/away bar. */
+:root {
+  --bg: #F2F4F0;
+  --surface: #FFFFFF;
+  --fg: #16211B;
+  --muted: #5B6A61;
+  --line: #DCE2DC;
+  --accent: #C23D15;
+  --home: #C23D15;
+  --draw: #9AA79F;
+  --away: #2F62B5;
+  --good: #1E7A46;
+  --bad: #B3261E;
+  --display: 'Barlow Condensed', 'Arial Narrow', sans-serif;
+  --body: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0F1612; --surface: #17211B; --fg: #E7EEE9; --muted: #93A399; --line: #26332B;
+    --accent: #FF8157; --home: #FF8157; --draw: #5E6F65; --away: #7FA6EA; --good: #5BD08A; --bad: #FF8A80;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0F1612; --surface: #17211B; --fg: #E7EEE9; --muted: #93A399; --line: #26332B;
+  --accent: #FF8157; --home: #FF8157; --draw: #5E6F65; --away: #7FA6EA; --good: #5BD08A; --bad: #FF8A80;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 15px; line-height: 1.45; padding-inline: 16px; padding-block: 0 32px; }
+.wrap { max-width: 640px; margin-inline: auto; }
+button, input { font: inherit; color: inherit; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+header { position: sticky; top: env(safe-area-inset-top, 0px); background: var(--bg); padding-block: 14px 10px; z-index: 5; border-bottom: 1px solid var(--line); }
+h1 { font-family: var(--display); font-weight: 700; font-size: 30px; line-height: 1; letter-spacing: .02em; text-transform: uppercase; margin: 0 0 10px; }
+.tabs { display: flex; gap: 6px; }
+.tab { flex: 1; padding: 8px 4px; border: 1px solid var(--line); background: var(--surface); border-radius: 8px; font-weight: 500; cursor: pointer; }
+.tab[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+
+main { display: flex; flex-direction: column; gap: 12px; padding-top: 12px; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { padding: 6px 12px; border: 1px solid var(--line); background: var(--surface); border-radius: 999px; cursor: pointer; font-size: 14px; }
+.chip[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); font-weight: 600; box-shadow: inset 0 0 0 1px var(--accent); }
+.note { margin: 0; padding: 10px 12px; border: 1px dashed var(--line); border-radius: 8px; color: var(--muted); font-size: 13px; }
+.empty { color: var(--muted); padding-block: 16px; margin: 0; }
+
+.list { display: flex; flex-direction: column; gap: 10px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.meta { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; color: var(--muted); font-size: 12.5px; letter-spacing: .03em; text-transform: uppercase; }
+.teams { margin: 0; display: flex; flex-wrap: wrap; gap: 2px 8px; font-size: 17px; font-weight: 600; line-height: 1.25; min-width: 0; }
+.vs { color: var(--muted); font-weight: 400; }
+.pred { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.score { font-family: var(--display); font-weight: 700; font-size: 40px; line-height: 1; font-variant-numeric: tabular-nums; }
+.pickline { color: var(--muted); font-size: 14px; }
+.pickline strong { color: var(--fg); }
+.bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; gap: 2px; }
+.bar i { display: block; height: 100%; }
+.legend { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: 13px; font-variant-numeric: tabular-nums; }
+.legend span::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: var(--c); }
+.legend .on { font-weight: 600; }
+.yp { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: 10px; }
+.lab { color: var(--muted); font-size: 13px; }
+.picks { display: flex; gap: 6px; }
+.pick { padding: 6px 14px; border: 1px solid var(--line); background: var(--bg); border-radius: 8px; cursor: pointer; font-weight: 500; }
+.pick[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+
+.record { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: flex; gap: 20px; flex-wrap: wrap; }
+.record div { display: flex; flex-direction: column; }
+.record b { font-family: var(--display); font-size: 32px; line-height: 1; font-variant-numeric: tabular-nums; }
+.record span { color: var(--muted); font-size: 13px; }
+.status { font-weight: 600; font-size: 14px; }
+.status.ok { color: var(--good); }
+.status.no { color: var(--bad); }
+.status.wait { color: var(--muted); }
+
+form { display: flex; flex-direction: column; gap: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+label { display: flex; flex-direction: column; gap: 4px; font-weight: 500; font-size: 14px; }
+input { padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); min-width: 0; }
+.btn { padding: 10px 14px; border: 0; border-radius: 8px; background: var(--fg); color: var(--bg); font-weight: 600; cursor: pointer; }
+.fine { font-size: 12.5px; color: var(--muted); margin: 0; }
+footer { margin-top: 18px; }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Score Predictor</h1>
+    <div class="tabs" role="group" aria-label="Sections">
+      <button class="tab" data-tab="fixtures" aria-pressed="true">Fixtures</button>
+      <button class="tab" data-tab="picks" aria-pressed="false">My picks</button>
+      <button class="tab" data-tab="settings" aria-pressed="false">Settings</button>
+    </div>
+  </header>
+
+  <main>
+    <p class="note" id="banner"></p>
+
+    <section id="fixtures" class="list" aria-label="Fixtures">
+      <div class="chips" id="leagueChips"></div>
+      <div class="chips" id="dayChips"></div>
+      <div class="list" id="fixtureList"></div>
+    </section>
+
+    <section id="picks" class="list" aria-label="My picks" hidden>
+      <div class="record" id="record"></div>
+      <div class="list" id="pickList"></div>
+    </section>
+
+    <section id="settings" hidden aria-label="Settings">
+      <form id="settingsForm">
+        <label for="apiKey">API-Football key
+          <input id="apiKey" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste your key for live fixtures">
+        </label>
+        <label for="season">Season (year it starts)
+          <input id="season" type="number" inputmode="numeric" min="2015" max="2035">
+        </label>
+        <button class="btn" type="submit">Save and reload</button>
+        <p class="fine">The key is stored only in this browser on this device. Leave it empty to use demo data.</p>
+      </form>
+    </section>
+
+    <footer>
+      <p class="fine">Predictions are statistical estimates for information only, with no guarantee of results. For ages 18 and over. This app does not take bets.</p>
+    </footer>
+  </main>
+</div>
+
+<script>
+(function () {
+  var LEAGUES = [
+    { id: 276, name: 'Kenyan Premier League' },
+    { id: 39, name: 'Premier League' },
+    { id: 140, name: 'La Liga' }
+  ];
+  var DAYS = ['Today', 'Tomorrow', 'Next 7 days'];
+
+  var store = {
+    get: function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set: function (k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  };
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+
+  var state = { fixtures: [], preds: {}, picks: {}, league: 0, day: 0, tab: 'fixtures', note: '' };
+  try { state.picks = JSON.parse(store.get('sp_picks') || '{}') || {}; } catch (e) { state.picks = {}; }
+
+  /* ---------- Model ---------- */
+  function isDone(f) { return (f.status === 'FT' || f.status === 'AET' || f.status === 'PEN') && f.hg != null && f.ag != null; }
+  function isUpcoming(f) { return f.status === 'NS' || f.status === 'TBD'; }
+  function resultOf(f) { if (!isDone(f)) return null; return f.hg > f.ag ? '1' : f.hg < f.ag ? '2' : 'X'; }
+  function groupBy(arr, key) { var o = {}; arr.forEach(function (x) { (o[x[key]] = o[x[key]] || []).push(x); }); return o; }
+  function sum(arr, key) { return arr.reduce(function (s, x) { return s + x[key]; }, 0); }
+
+  function pmf(l, MAX) { var r = [Math.exp(-l)]; for (var k = 1; k <= MAX; k++) r.push(r[k - 1] * l / k); return r; }
+  function predict(lamH, lamA) {
+    var MAX = 8, ph = pmf(lamH, MAX), pa = pmf(lamA, MAX), h = 0, d = 0, a = 0, i, j;
+    for (i = 0; i <= MAX; i++) for (j = 0; j <= MAX; j++) { var p = ph[i] * pa[j]; if (i > j) h += p; else if (i === j) d += p; else a += p; }
+    var t = h + d + a, pH = h / t, pD = d / t, pA = a / t;
+    var pick = (pH >= pD && pH >= pA) ? '1' : (pA >= pD ? '2' : 'X');
+    var best = -1, bh = 0, ba = 0;
+    for (i = 0; i <= MAX; i++) for (j = 0; j <= MAX; j++) {
+      var ok = pick === '1' ? i > j : pick === '2' ? i < j : i === j;
+      var q = ph[i] * pa[j];
+      if (ok && q > best) { best = q; bh = i; ba = j; }
+    }
+    return { pH: pH, pD: pD, pA: pA, sh: bh, sa: ba, pick: pick, conf: Math.max(pH, pD, pA) };
+  }
+  function predictAll(all) {
+    var out = {}, K = 3;
+    var groups = groupBy(all, 'leagueId');
+    Object.keys(groups).forEach(function (lid) {
+      var fx = groups[lid], done = fx.filter(isDone);
+      var avgH = Math.max(0.3, done.length >= 5 ? sum(done, 'hg') / done.length : 1.5);
+      var avgA = Math.max(0.3, done.length >= 5 ? sum(done, 'ag') / done.length : 1.2);
+      var byHome = groupBy(done, 'home'), byAway = groupBy(done, 'away');
+      function shrink(s, n, avg) { return (s + K * avg) / (n + K); }
+      fx.filter(isUpcoming).forEach(function (f) {
+        var hh = byHome[f.home] || [], aa = byAway[f.away] || [];
+        var homeFor = shrink(sum(hh, 'hg'), hh.length, avgH);
+        var homeAgainst = shrink(sum(hh, 'ag'), hh.length, avgA);
+        var awayFor = shrink(sum(aa, 'ag'), aa.length, avgA);
+        var awayAgainst = shrink(sum(aa, 'hg'), aa.length, avgH);
+        var lamH = Math.min(4.5, Math.max(0.2, homeFor * awayAgainst / avgH));
+        var lamA = Math.min(4.5, Math.max(0.2, awayFor * homeAgainst / avgA));
+        out[f.id] = predict(lamH, lamA);
+      });
+    });
+    return out;
+  }
+
+  /* ---------- Data ---------- */
+  function mulberry(seed) { return function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; var t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+  function demoFixtures() {
+    var rnd = mulberry(7), now = new Date(), out = [], id = 1;
+    var teams = {
+      276: ['Gor Mahia', 'AFC Leopards', 'Tusker', 'KCB', 'Bandari', 'Kakamega Homeboyz'],
+      39: ['Arsenal', 'Chelsea', 'Man City', 'Liverpool', 'Tottenham', 'Newcastle'],
+      140: ['Real Madrid', 'Barcelona', 'Atletico', 'Sevilla', 'Valencia', 'Villarreal']
+    };
+    function goals(str) { var c = 0; for (var i = 0; i < 4; i++) if (rnd() * 10 < str) c++; return c; }
+    function at(days, hour) { var d = new Date(now.getTime()); d.setDate(d.getDate() + days); d.setHours(hour, 0, 0, 0); return d; }
+    LEAGUES.forEach(function (l) {
+      var t = teams[l.id];
+      t.forEach(function (h, ih) { t.forEach(function (a, ia) {
+        if (h === a) return;
+        out.push({ id: id++, leagueId: l.id, league: l.name, home: h, away: a, kickoff: at(-2 - Math.floor(rnd() * 60), 15), status: 'FT', hg: goals(Math.max(1, 6 - ih)), ag: goals(Math.max(1, 5 - ia)) });
+      }); });
+      [0, 0, 1, 1, 3, 5].forEach(function (off) {
+        var h = t[Math.floor(rnd() * t.length)], a;
+        do { a = t[Math.floor(rnd() * t.length)]; } while (a === h);
+        out.push({ id: id++, leagueId: l.id, league: l.name, home: h, away: a, kickoff: at(off, 13 + Math.floor(rnd() * 8)), status: 'NS', hg: null, ag: null });
+      });
+    });
+    return out;
+  }
+  function fetchLeague(l, key, season) {
+    return fetch('https://v3.football.api-sports.io/fixtures?league=' + l.id + '&season=' + season, { headers: { 'x-apisports-key': key } })
+      .then(function (r) { if (!r.ok) throw new Error('Server error ' + r.status); return r.json(); })
+      .then(function (j) {
+        var e = j.errors;
+        if (e && !Array.isArray(e) && Object.keys(e).length) throw new Error(Object.keys(e).map(function (k) { return e[k]; }).join(' '));
+        return j.response.map(function (o) {
+          return { id: o.fixture.id, leagueId: l.id, league: l.name, home: o.teams.home.name, away: o.teams.away.name, kickoff: new Date(o.fixture.date), status: o.fixture.status.short, hg: o.goals.home, ag: o.goals.away };
+        });
+      });
+  }
+  function load() {
+    var key = (store.get('sp_key') || '').trim(), season = store.get('sp_season') || '2026';
+    function useDemo(msg) { state.fixtures = demoFixtures(); state.preds = predictAll(state.fixtures); state.note = msg; render(); }
+    if (!key) { useDemo('Demo data. Open Settings and add your API-Football key for live fixtures.'); return; }
+    state.note = 'Loading live fixtures...'; render();
+    Promise.allSettled(LEAGUES.map(function (l) { return fetchLeague(l, key, season); })).then(function (res) {
+      var ok = [], firstErr = null;
+      res.forEach(function (r) { if (r.status === 'fulfilled') ok = ok.concat(r.value); else if (!firstErr) firstErr = r.reason; });
+      if (!ok.length) { useDemo('Could not load live data (' + (firstErr && firstErr.message ? firstErr.message : 'blocked') + '). Showing demo data instead.'); return; }
+      state.fixtures = ok; state.preds = predictAll(ok); state.note = ''; render();
+    });
+  }
+
+  /* ---------- Rendering ---------- */
+  var timeFmt = { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' };
+  function when(f) { try { return f.kickoff.toLocaleString([], timeFmt); } catch (e) { return String(f.kickoff); } }
+  function label(f, code) { return code === '1' ? f.home + ' win' : code === '2' ? f.away + ' win' : 'Draw'; }
+  function pct(x) { return Math.round(x * 100); }
+  function dayStart(d) { var x = new Date(d.getTime()); x.setHours(0, 0, 0, 0); return x.getTime(); }
+
+  function chips(el, items, current, attr) {
+    el.innerHTML = items.map(function (it) { return '<button class="chip" ' + attr + '="' + it.v + '" aria-pressed="' + (String(it.v) === String(current)) + '">' + esc(it.t) + '</button>'; }).join('');
+  }
+
+  function card(f, p) {
+    var mine = state.picks[f.id], h = '<article class="card"><div class="meta"><span>' + esc(f.league) + '</span><span>' + esc(when(f)) + '</span></div>';
+    h += '<h3 class="teams"><span>' + esc(f.home) + '</span><span class="vs">vs</span><span>' + esc(f.away) + '</span></h3>';
+    if (p) {
+      h += '<div class="pred"><div class="score" aria-label="Predicted score">' + p.sh + '–' + p.sa + '</div><div class="pickline">Model pick <strong>' + esc(label(f, p.pick)) + '</strong> · ' + pct(p.conf) + '%</div></div>';
+      h += '<div class="bar" role="img" aria-label="Home ' + pct(p.pH) + '%, draw ' + pct(p.pD) + '%, away ' + pct(p.pA) + '%">' +
+        '<i style="width:' + (p.pH * 100).toFixed(1) + '%;background:var(--home)"></i><i style="width:' + (p.pD * 100).toFixed(1) + '%;background:var(--draw)"></i><i style="width:' + (p.pA * 100).toFixed(1) + '%;background:var(--away)"></i></div>';
+      h += '<div class="legend"><span style="--c:var(--home)" class="' + (p.pick === '1' ? 'on' : '') + '">Home ' + pct(p.pH) + '%</span><span style="--c:var(--draw)" class="' + (p.pick === 'X' ? 'on' : '') + '">Draw ' + pct(p.pD) + '%</span><span style="--c:var(--away)" class="' + (p.pick === '2' ? 'on' : '') + '">Away ' + pct(p.pA) + '%</span></div>';
+    }
+    h += '<div class="yp"><span class="lab">Your pick</span><div class="picks">';
+    [['1', 'Home'], ['X', 'Draw'], ['2', 'Away']].forEach(function (c) { h += '<button class="pick" data-id="' + f.id + '" data-code="' + c[0] + '" aria-pressed="' + (mine === c[0]) + '">' + c[1] + '</button>'; });
+    return h + '</div></div></article>';
+  }
+
+  function renderFixtures() {
+    chips(document.getElementById('leagueChips'), [{ v: 0, t: 'All leagues' }].concat(LEAGUES.map(function (l) { return { v: l.id, t: l.name }; })), state.league, 'data-league');
+    chips(document.getElementById('dayChips'), DAYS.map(function (t, i) { return { v: i, t: t }; }), state.day, 'data-day');
+    var today = dayStart(new Date()), DAY = 86400000;
+    var shown = state.fixtures.filter(isUpcoming).filter(function (f) { return !state.league || f.leagueId === state.league; }).filter(function (f) {
+      var d = dayStart(f.kickoff);
+      return state.day === 0 ? d === today : state.day === 1 ? d === today + DAY : (d >= today && d < today + 8 * DAY);
+    }).sort(function (a, b) { return a.kickoff - b.kickoff; });
+    document.getElementById('fixtureList').innerHTML = shown.length ? shown.map(function (f) { return card(f, state.preds[f.id]); }).join('') : '<p class="empty">No matches for this filter. Try another day or league.</p>';
+  }
+
+  function renderPicks() {
+    var byId = {}; state.fixtures.forEach(function (f) { byId[f.id] = f; });
+    var rows = Object.keys(state.picks).map(function (id) { return byId[id] ? { f: byId[id], pick: state.picks[id] } : null; }).filter(Boolean).sort(function (a, b) { return b.f.kickoff - a.f.kickoff; });
+    var settled = rows.filter(function (r) { return isDone(r.f); });
+    var won = settled.filter(function (r) { return resultOf(r.f) === r.pick; }).length;
+    document.getElementById('record').innerHTML = '<div><b>' + rows.length + '</b><span>Picks</span></div><div><b>' + settled.length + '</b><span>Settled</span></div><div><b>' + won + '</b><span>Correct</span></div><div><b>' + (settled.length ? Math.round(won * 100 / settled.length) + '%' : '–') + '</b><span>Accuracy</span></div>';
+    document.getElementById('pickList').innerHTML = rows.length ? rows.map(function (r) {
+      var res = resultOf(r.f), cls = res == null ? 'wait' : res === r.pick ? 'ok' : 'no';
+      var txt = res == null ? 'Pending' : (res === r.pick ? 'Correct' : 'Wrong') + ' (' + r.f.hg + '–' + r.f.ag + ')';
+      return '<article class="card"><div class="meta"><span>' + esc(r.f.league) + '</span><span>' + esc(when(r.f)) + '</span></div><h3 class="teams"><span>' + esc(r.f.home) + '</span><span class="vs">vs</span><span>' + esc(r.f.away) + '</span></h3><div>Your pick: <strong>' + esc(label(r.f, r.pick)) + '</strong></div><div class="status ' + cls + '">' + txt + '</div></article>';
+    }).join('') : '<p class="empty">No picks yet. Choose Home, Draw or Away on a match in Fixtures.</p>';
+  }
+
+  function render() {
+    var b = document.getElementById('banner');
+    b.textContent = state.note; b.hidden = !state.note;
+    ['fixtures', 'picks', 'settings'].forEach(function (t) { document.getElementById(t).hidden = state.tab !== t; });
+    document.querySelectorAll('.tab').forEach(function (el) { el.setAttribute('aria-pressed', String(el.getAttribute('data-tab') === state.tab)); });
+    if (state.tab === 'fixtures') renderFixtures();
+    if (state.tab === 'picks') renderPicks();
+  }
+
+  /* ---------- Events ---------- */
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest('button'); if (!t) return;
+    if (t.hasAttribute('data-tab')) { state.tab = t.getAttribute('data-tab'); render(); return; }
+    if (t.hasAttribute('data-league')) { state.league = Number(t.getAttribute('data-league')); render(); return; }
+    if (t.hasAttribute('data-day')) { state.day = Number(t.getAttribute('data-day')); render(); return; }
+    if (t.hasAttribute('data-code')) {
+      var id = t.getAttribute('data-id'), code = t.getAttribute('data-code');
+      if (state.picks[id] === code) delete state.picks[id]; else state.picks[id] = code;
+      store.set('sp_picks', JSON.stringify(state.picks)); render();
+    }
+  });
+  document.getElementById('settingsForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    store.set('sp_key', document.getElementById('apiKey').value.trim());
+    store.set('sp_season', document.getElementById('season').value || '2026');
+    state.tab = 'fixtures'; load();
+  });
+  document.getElementById('apiKey').value = store.get('sp_key') || '';
+  document.getElementById('season').value = store.get('sp_season') || '2026';
+
+  load();
+})();
+</script>
+
+</body></html>
